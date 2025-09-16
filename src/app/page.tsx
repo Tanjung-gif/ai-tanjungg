@@ -38,6 +38,7 @@ export default function Home() {
   const [showPreset, setShowPreset] = useState(true);
   const [showSidebar, setShowSidebar] = useState(true);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [typingMessage, setTypingMessage] = useState<string>(""); // ✅ animasi ketik
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -51,36 +52,26 @@ export default function Home() {
     "Bagaimana cara kerja blockchain?",
   ];
 
-  // ✅ Load dari localStorage saat pertama kali render
+  // ✅ Load dari localStorage
   useEffect(() => {
     const savedChats = localStorage.getItem("chats");
     const savedActive = localStorage.getItem("activeChat");
 
-    if (savedChats) {
-      setChats(JSON.parse(savedChats));
-    }
-    if (savedActive) {
-      setActiveChat(savedActive);
-    }
+    if (savedChats) setChats(JSON.parse(savedChats));
+    if (savedActive) setActiveChat(savedActive);
   }, []);
 
-  // ✅ Simpan chats ke localStorage tiap kali berubah
   useEffect(() => {
     localStorage.setItem("chats", JSON.stringify(chats));
   }, [chats]);
 
-  // ✅ Simpan activeChat ke localStorage tiap kali berubah
   useEffect(() => {
     localStorage.setItem("activeChat", activeChat);
   }, [activeChat]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [currentChat?.messages, loading]);
-
-  useEffect(() => {
-    if (!loading) inputRef.current?.focus();
-  }, [loading]);
+  }, [currentChat?.messages, typingMessage]);
 
   const handleCopy = (text: string, index: number) => {
     navigator.clipboard.writeText(text);
@@ -104,6 +95,7 @@ export default function Home() {
     setSelectedImages([]);
     setImageBase64([]);
     setLoading(true);
+    setTypingMessage(""); // reset typing
 
     try {
       const res = await fetch("/api/generate", {
@@ -115,12 +107,13 @@ export default function Home() {
       let aiText = "";
       if (res.ok) {
         const data = await res.json();
-        aiText = data.output || "Saya belum bisa menjawab itu dengan tepat.";
+        aiText = (data.output || "Saya belum bisa menjawab itu.").replace(/\*/g, "");
       } else {
-        aiText = "Terjadi kesalahan saat memproses jawaban.";
+        aiText = "Terjadi kesalahan server.";
       }
 
-      typeWriterEffect(aiText, currentChat.messages, userMessage);
+      // ✅ animasi typewriter
+      typeWriterEffect(aiText, userMessage);
     } catch {
       updateChatMessages([
         ...currentChat.messages,
@@ -132,33 +125,26 @@ export default function Home() {
     }
   };
 
-  const typeWriterEffect = (
-    fullText: string,
-    prevMessages: Message[],
-    userMessage: Message
-  ) => {
-    let index = 0;
-    const typingMessage: Message = { role: "ai", text: "", typing: true };
-
-    updateChatMessages([...prevMessages, userMessage, typingMessage]);
+  // Fungsi animasi ketik
+  const typeWriterEffect = (text: string, userMessage: Message) => {
+    let i = 0;
+    setTypingMessage("");
 
     const interval = setInterval(() => {
-      if (index <= fullText.length) {
-        updateChatMessages([
-          ...prevMessages,
-          userMessage,
-          { role: "ai", text: fullText.slice(0, index), typing: true },
-        ]);
-        index++;
-      } else {
+      i++;
+      setTypingMessage(text.slice(0, i));
+
+      if (i >= text.length) {
         clearInterval(interval);
+
         updateChatMessages([
-          ...prevMessages,
+          ...currentChat!.messages,
           userMessage,
-          { role: "ai", text: fullText, typing: false },
+          { role: "ai", text, typing: false },
         ]);
+        setTypingMessage("");
       }
-    }, 30);
+    }, 25); // 25ms per huruf
   };
 
   const updateChatMessages = (newMessages: Message[]) => {
@@ -306,7 +292,8 @@ export default function Home() {
                 </h1>
               </div>
               <p className="text-gray-300 max-w-md">
-                Silakan pilih pertanyaan yang sudah tersedia di bawah atau ketik pertanyaanmu sendiri.
+                Silakan pilih pertanyaan yang sudah tersedia di bawah atau ketik
+                pertanyaanmu sendiri.
               </p>
 
               {showPreset && (
@@ -331,7 +318,9 @@ export default function Home() {
           {currentChat?.messages.map((msg, i) => (
             <div
               key={i}
-              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              className={`flex ${
+                msg.role === "user" ? "justify-end" : "justify-start"
+              }`}
             >
               <div
                 className={`relative max-w-[75%] px-4 py-3 rounded-xl text-sm whitespace-pre-wrap break-words shadow-md leading-relaxed ${
@@ -341,7 +330,6 @@ export default function Home() {
                 }`}
               >
                 {msg.text}
-                {msg.typing && <CursorBlink />}
                 {msg.images && msg.images.length > 0 && (
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     {msg.images.map((img, idx) => (
@@ -370,13 +358,24 @@ export default function Home() {
             </div>
           ))}
 
-          {loading && !currentChat?.messages.some((m) => m.typing) && (
+          {/* ✅ Ketikan AI sedang berjalan */}
+          {typingMessage && (
+            <div className="flex justify-start">
+              <div className="bg-[#2a2a2a] text-emerald-100 border border-gray-700 rounded-xl rounded-bl-none shadow-md px-4 py-3 text-sm whitespace-pre-wrap max-w-[75%] leading-relaxed">
+                {typingMessage}
+              </div>
+            </div>
+          )}
+
+          {/* Loading dots sebelum mulai ngetik */}
+          {loading && !typingMessage && (
             <div className="flex items-start gap-2">
               <div className="bg-[#2a2a2a] px-4 py-3 rounded-xl rounded-bl-none shadow-md">
                 <DotTyping />
               </div>
             </div>
           )}
+
           <div ref={messagesEndRef} />
         </div>
 
@@ -471,11 +470,5 @@ function DotTyping() {
         />
       ))}
     </span>
-  );
-}
-
-function CursorBlink() {
-  return (
-    <span className="inline-block w-[6px] h-[16px] bg-emerald-400 ml-1 animate-pulse" />
   );
 }
