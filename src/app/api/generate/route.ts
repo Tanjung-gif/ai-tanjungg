@@ -2,7 +2,24 @@
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-export async function POST(req: Request) {
+// Definisikan tipe input biar tidak pakai any
+type InputPart =
+  | { text: string }
+  | { inlineData: { data: string; mimeType: string } };
+
+// Definisikan tipe request body
+interface GenerateRequest {
+  prompt: string;
+  image?: string;
+  mimeType?: string;
+  model?: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+  topP?: number;
+  topK?: number;
+}
+
+export async function POST(req: Request): Promise<Response> {
   try {
     const {
       prompt,
@@ -13,11 +30,14 @@ export async function POST(req: Request) {
       maxOutputTokens = 1024,
       topP = 0.8,
       topK = 40,
-    } = await req.json();
+    }: GenerateRequest = await req.json();
 
     // Validasi prompt
     if (!prompt || typeof prompt !== "string") {
-      return NextResponse.json({ error: "Prompt wajib diisi" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Prompt wajib diisi" },
+        { status: 400 }
+      );
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
@@ -31,12 +51,13 @@ export async function POST(req: Request) {
     const genAI = new GoogleGenerativeAI(apiKey);
     const modelInstance = genAI.getGenerativeModel({ model });
 
-    const inputs: any[] = [{ text: prompt }];
+    // Input tidak pakai any lagi
+    const inputs: InputPart[] = [{ text: prompt }];
 
     if (image && typeof image === "string") {
       inputs.push({
         inlineData: {
-          data: image.replace(/^data:image\/\w+;base64,/, ""), // remove prefix if ada
+          data: image.replace(/^data:image\/\w+;base64,/, ""),
           mimeType: mimeType || "image/png",
         },
       });
@@ -47,11 +68,13 @@ export async function POST(req: Request) {
       generationConfig: { temperature, maxOutputTokens, topP, topK },
     });
 
-    // Tangani teks atau konten multi-part
+    // Tangani output
     let output = "";
     if (result.response) {
       try {
-        output = result.response.text ? result.response.text() : JSON.stringify(result.response);
+        output = result.response.text
+          ? result.response.text()
+          : JSON.stringify(result.response);
       } catch {
         output = JSON.stringify(result.response);
       }
