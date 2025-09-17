@@ -25,7 +25,7 @@ export async function POST(req: Request): Promise<Response> {
       prompt,
       image,
       mimeType,
-      model = "gemini-2.0-flash",
+      model = "gemini-2.5-flash",
       temperature = 0.2,
       maxOutputTokens = 1024,
       topP = 0.8,
